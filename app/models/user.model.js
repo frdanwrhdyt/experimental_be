@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const permissions = ["CREATE", "READ", "UPDATE", "DELETE"];
+const permissions = ["edit", "view"];
 const role = ["superuser", "admin", "staff"];
 const userSchema = new mongoose.Schema(
   {
@@ -19,12 +19,7 @@ const userRoleSchema = new mongoose.Schema(
     },
 
     group_id: { type: mongoose.Schema.Types.ObjectId, ref: "Group" },
-    permissions: [
-      {
-        type: String,
-        enum: permissions,
-      },
-    ],
+    permissions: { type: String, enum: permissions },
   },
   { timestamps: true }
 );

@@ -5,7 +5,7 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const app = express();
 
-const dbConnection = require("./app/configs/database.config.js");
+const { dbConnection } = require("./app/configs/database.config.js");
 const UserRouter = require("./app/routers/user.router.js");
 const LayerRouter = require("./app/routers/layer.router.js");
 
@@ -13,6 +13,9 @@ const LayerRouter = require("./app/routers/layer.router.js");
 dbConnection();
 const corsOption = {
   origin: "*",
+  methods: "GET, POST, PUT, DELETE",
+  credentials: true, // Aktifkan mode kredensial
+  optionsSuccessStatus: 204,
 };
 
 // Middleware, rute, dan lain-lain

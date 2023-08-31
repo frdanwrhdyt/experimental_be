@@ -4,9 +4,9 @@ const asyncHandler = require("express-async-handler");
 const roleUserController = {
   getUserRoles: async (req, res) => {
     try {
-      const userRoles = await UserRole.find()
-        .populate("user_id", "username")
-        .populate("role", "name");
+      const userRoles = await UserRole.find();
+      // .populate("user_id", "username")
+      // .populate("role", "name", "permissions");
 
       res.json(userRoles);
     } catch (error) {

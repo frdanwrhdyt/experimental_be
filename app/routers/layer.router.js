@@ -8,6 +8,11 @@ const {
 } = require("../middleware/permission.middleware.js");
 
 router.get(
+  "/layer-desa-berpotensi",
+  validatedToken,
+  LayerController.showDesaData
+);
+router.get(
   "/show-layers",
   validatedToken,
   checkSuperuser,

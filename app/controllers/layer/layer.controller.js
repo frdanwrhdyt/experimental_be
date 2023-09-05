@@ -10,7 +10,35 @@ const grc = new GeoServerRestClient(
   process.env.GEOSERVER_USERNAME,
   process.env.GEOSERVER_PASSWORD
 );
+const showDesaData = asyncHandler(async (req, res) => {
+  try {
+    const tablename = "desa_berpotensi";
+    const { page } = req.query; // Mendapatkan parameter halaman dari query string
+    const itemsPerPage = 20; // Jumlah item per halaman
 
+    const offset = (page - 1) * itemsPerPage;
+    // const query = `SELECT *, ST_AsGeoJSON(geom) AS geom FROM "${tablename}" ORDER BY id OFFSET ${offset} LIMIT ${itemsPerPage}`;
+    const query = `SELECT *, ST_AsGeoJSON(geom) AS geom FROM "${tablename}" OFFSET ${offset} LIMIT ${itemsPerPage}`;
+
+    const result = await pgConnection.query(query);
+
+    const tableData = result.rows.map((row) => ({
+      ...row,
+      geom: JSON.parse(row.geom), // Konversi GeoJSON teks ke objek JSON
+    }));
+
+    // Menghitung total halaman berdasarkan total data dan itemsPerPage
+    const queryTotal = `SELECT COUNT(*) FROM "${tablename}"`;
+    const resultTotal = await pgConnection.query(queryTotal);
+    const totalItems = resultTotal.rows[0].count;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+    res.status(200).json({ data: tableData, totalPages, totalItems });
+  } catch (e) {
+    console.log(e);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
 const getAllLayerUnsave = asyncHandler(async (req, res) => {
   try {
     const data = await grc.layers.getAll();
@@ -291,10 +319,8 @@ const createSpatialTable = asyncHandler(async (req, res) => {
       return;
     }
 
-    // Pastikan bahwa "data" memiliki struktur yang sesuai dengan GeoJSON
-    const { type, geometry, properties } = data;
-
-    if (!type || !geometry || !properties) {
+    // Pastikan bahwa "data" memiliki struktur yang sesuai
+    if (!data.type || !data.features || !Array.isArray(data.features)) {
       res.status(400).json({ message: "Invalid 'data' structure" });
       return;
     }
@@ -304,7 +330,7 @@ const createSpatialTable = asyncHandler(async (req, res) => {
       CREATE TABLE "${tableName}" (
         id SERIAL PRIMARY KEY,
         geom geometry(Geometry, 4326),
-        ${Object.keys(properties)
+        ${Object.keys(data.features[0].properties)
           .map((prop) => `"${prop}" TEXT`) // Ubah 'string' menjadi 'TEXT'
           .join(", ")}
       );
@@ -314,16 +340,18 @@ const createSpatialTable = asyncHandler(async (req, res) => {
     await pgConnection.query(createTableQuery);
 
     // Insert data ke dalam tabel
-    const insertDataQuery = `
-      INSERT INTO "${tableName}" (geom, ${Object.keys(properties).join(", ")})
-      VALUES (ST_SetSRID(ST_GeomFromGeoJSON('${JSON.stringify(
-        geometry
-      )}'), 4326), ${Object.values(properties)
-      .map((propValue) => `'${propValue}'`)
-      .join(", ")});
-    `;
-
-    await pgConnection.query(insertDataQuery);
+    for (const feature of data.features) {
+      const { type, geometry, properties } = feature;
+      const insertDataQuery = `
+        INSERT INTO "${tableName}" (geom, ${Object.keys(properties).join(", ")})
+        VALUES (ST_SetSRID(ST_GeomFromGeoJSON('${JSON.stringify(
+          geometry
+        )}'), 4326), ${Object.values(properties)
+        .map((propValue) => `'${propValue}'`)
+        .join(", ")});
+      `;
+      await pgConnection.query(insertDataQuery);
+    }
 
     const layerName = tableName;
     const nativeBoundingBox = {
@@ -352,16 +380,15 @@ const createSpatialTable = asyncHandler(async (req, res) => {
       tableName: layerName,
     });
     const userRole = await UserRole.find({ user_id });
-    const layers = await Group.findById(userRole.group_id);
-    await Group.findByIdAndUpdate(layers.id, {
-      layers: [...layers, layersList.id],
+    const layers = await Group.findById(userRole[0].group_id);
+    await Group.findByIdAndUpdate(layers._id, {
+      layers: [...layers.layers, layersList._id],
     });
     const bod_layers = await Group.find({ name: "BOD" });
-    await Group.findByIdAndUpdate(bod_layers.id, {
-      layers: [...bod_layers, layersList.id],
+    await Group.findByIdAndUpdate(bod_layers[0]._id, {
+      layers: [...bod_layers[0].layers, layersList._id],
     });
-
-    res.status(201).json({ message: "Spatial table created successfully" });
+    res.status(201).json({ message: "Sucess" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server Error" });
@@ -393,4 +420,5 @@ module.exports = {
   createSpatialTable,
   addLayer,
   getLayerById,
+  showDesaData,
 };

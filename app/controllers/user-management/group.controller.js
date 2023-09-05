@@ -1,5 +1,6 @@
 // app/controllers/group.controller.js
-const { Group, User, Role } = require("../../models/user.model.js");
+const { Group } = require("../../models/user.model.js");
+const { Layer } = require("../../models/layer.model.js");
 
 const groupController = {
   createGroup: async (req, res) => {
@@ -14,8 +15,24 @@ const groupController = {
 
   getAllGroups: async (req, res) => {
     try {
-      const groups = await Group.find({}, "_id name");
-      res.json(groups);
+      const groups = await Group.find();
+      const layerGroup = await Promise.all(
+        groups.map(async (group) => {
+          const layerPromises = group.layers.map(async (layer) => {
+            const lay = await Layer.findById(layer);
+            return lay;
+          });
+          const layers = await Promise.all(layerPromises);
+
+          return {
+            id: group.id,
+            name: group.name,
+            layers: layers,
+            permission: group.permission,
+          };
+        })
+      );
+      res.json(layerGroup);
     } catch (error) {
       res.status(500).json({ message: "Internal Server Error" });
     }

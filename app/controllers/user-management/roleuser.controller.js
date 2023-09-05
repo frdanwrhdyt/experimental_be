@@ -1,13 +1,10 @@
-const { UserRole, User, Role, Group } = require("../../models/user.model.js");
+const { UserRole, User, Group } = require("../../models/user.model.js");
 const asyncHandler = require("express-async-handler");
 
 const roleUserController = {
   getUserRoles: async (req, res) => {
     try {
       const userRoles = await UserRole.find();
-      // .populate("user_id", "username")
-      // .populate("role", "name", "permissions");
-
       res.json(userRoles);
     } catch (error) {
       res.status(500).json({ message: "Internal Server Error" });
@@ -17,19 +14,6 @@ const roleUserController = {
   assignUserRole: asyncHandler(async (req, res) => {
     try {
       const { user_id, group_id, role } = req.body;
-
-      if (role === "superuser") {
-        if (req.body.key === process.env.SUPERUSER_KEY) {
-          const userRole = await UserRole.create(req.body);
-          return res.status(200).json({
-            status: "success",
-            message: {
-              user_id: userRole.user_id,
-              role: userRole.role,
-            },
-          });
-        }
-      }
 
       if (!user_id || !role || !group_id) {
         return res
@@ -49,6 +33,19 @@ const roleUserController = {
       const userRole = await UserRole.create(req.body);
       res.status(200).json({ message: userRole });
     } catch (error) {
+      console.log(error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  }),
+  updateUserRole: asyncHandler(async (req, res) => {
+    try {
+      const id = req.params.id;
+      const userRole = await UserRole.findByIdAndUpdate(id, req.body, {
+        new: true,
+      });
+      res.status(200).json({ message: userRole });
+    } catch (e) {
+      console.log(e);
       res.status(500).json({ message: "Internal Server Error" });
     }
   }),

@@ -2,22 +2,17 @@ const jwt = require("jsonwebtoken");
 const asyncHandler = require("express-async-handler");
 
 const verifyAccessToken = asyncHandler(async (req, res, next) => {
-  const accessToken = req.headers.authorization;
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  // console.log(authHeader);
+  if (!authHeader?.startsWith("Bearer ")) return res.sendStatus(401);
+  const token = authHeader.split(" ")[1];
 
-  if (!accessToken) {
-    return res.status(401).json({ message: "Access token is missing" });
-  }
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) return res.sendStatus(403); //invalid token
+    req.user = { id: decoded.id, username: decoded.username };
 
-  try {
-    const decodedToken = jwt.verify(
-      accessToken.split(" ")[1], // Extract token from "Bearer [token]"
-      process.env.ACCESS_TOKEN_SECRET
-    );
-    req.user = decodedToken.user;
     next();
-  } catch (err) {
-    return res.status(403).json({ message: "Invalid access token" });
-  }
+  });
 });
 
 module.exports = verifyAccessToken;

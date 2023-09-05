@@ -1,11 +1,29 @@
 const mongoose = require("mongoose");
-
-const commonLayerSchema = new mongoose.Schema(
+const { Group } = require("./user.model");
+const layerSchema = new mongoose.Schema(
   {
-    name: { type: String },
+    layer: { type: String },
+    tableName: { type: String },
   },
   { timestamps: true }
 );
-const CommonLayer = mongoose.model("Layer", commonLayerSchema);
+const commonLayerSchema = new mongoose.Schema(
+  {
+    layer_id: { type: mongoose.Schema.Types.ObjectId, ref: "Layer" },
+  },
+  { timestamps: true }
+);
+layerSchema.pre("remove", async function (next) {
+  try {
+    // Hapus semua Group yang memiliki layer_id yang sesuai dengan Layer yang akan dihapus
+    await Group.deleteMany({ layers: this._id });
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
-module.exports = CommonLayer;
+const Layer = mongoose.model("Layer", layerSchema);
+const CommonLayer = mongoose.model("CommonLayer", commonLayerSchema);
+
+module.exports = { Layer, CommonLayer };

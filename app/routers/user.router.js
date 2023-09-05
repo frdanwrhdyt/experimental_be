@@ -3,14 +3,10 @@ const express = require("express");
 const router = express.Router();
 
 const userController = require("../controllers/user-management/user.controller.js");
-const roleController = require("../controllers/user-management/role.controller.js");
 const groupController = require("../controllers/user-management/group.controller.js");
 const userRoleController = require("../controllers/user-management/roleuser.controller.js");
 
-const {
-  checkSuperuser,
-  checkAdminOrSuperuser,
-} = require("../middleware/superuser.middleware.js");
+const { checkSuperuser } = require("../middleware/superuser.middleware.js");
 const validatedToken = require("../middleware/verifyToken.middleware.js");
 
 // Routes for User management
@@ -20,11 +16,13 @@ router.get(
   checkSuperuser,
   userController.getAllUsers
 );
+router.post("/createsuperuser", userController.createSuperUser);
 router.post("/register", userController.createUser);
 router.post("/login", userController.loginUser);
-router.post("/refresh-token", userController.refreshToken);
+router.get("/refresh-token", userController.refreshToken);
 router.get("/users/:id", validatedToken, userController.getUserById);
 router.get("/current-user", validatedToken, userController.currentUser);
+router.get("/logout", userController.handleLogout);
 
 router.get(
   "/groups",
@@ -39,9 +37,20 @@ router.post(
   groupController.createGroup
 );
 router.get("/groups/:id", validatedToken, groupController.getGroupById);
-router.patch("/groups/:id", validatedToken, groupController.updateGroup);
+router.put("/groups/:id", validatedToken, groupController.updateGroup);
 
-router.post("/user-role", validatedToken, userRoleController.assignUserRole);
+router.post(
+  "/user-role",
+  validatedToken,
+  checkSuperuser,
+  userRoleController.assignUserRole
+);
+router.put(
+  "/user-role/:id",
+  validatedToken,
+  checkSuperuser,
+  userRoleController.updateUserRole
+);
 router.get(
   "/user-role",
   validatedToken,

@@ -1,5 +1,5 @@
 // app/middleware/checkSuperuser.js
-const { User, UserRole } = require("../models/user.model");
+const { UserRole } = require("../models/user.model");
 const asyncHandler = require("express-async-handler");
 
 const checkAdminOrSuperuser = asyncHandler(async (req, res, next) => {
@@ -20,6 +20,7 @@ const checkAdminOrSuperuser = asyncHandler(async (req, res, next) => {
 
 const checkSuperuser = asyncHandler(async (req, res, next) => {
   const userId = req.user.id; // Ambil ID pengguna dari token
+  console.log(userId);
   try {
     const userRole = (await UserRole.findOne({ user_id: userId })) || null;
 

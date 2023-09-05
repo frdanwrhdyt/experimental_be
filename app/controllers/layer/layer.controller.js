@@ -1,6 +1,6 @@
 const asyncHandler = require("express-async-handler");
 const { UserRole, Group } = require("../../models/user.model");
-const CommonLayer = require("../../models/layer.model");
+const { CommonLayer, Layer } = require("../../models/layer.model");
 const { pgConnection } = require("../../configs/database.config");
 
 const grcImport = require("geoserver-node-client");
@@ -11,13 +11,55 @@ const grc = new GeoServerRestClient(
   process.env.GEOSERVER_PASSWORD
 );
 
-const getAllLayer = asyncHandler(async (req, res) => {
+const getAllLayerUnsave = asyncHandler(async (req, res) => {
   try {
     const data = await grc.layers.getAll();
-    res.status(200).json(data);
+    const query = `
+      SELECT table_name
+      FROM information_schema.columns
+      WHERE table_schema='public' AND data_type='USER-DEFINED' AND udt_name='geometry'
+    `;
+    const { rows } = await pgConnection.query(query);
+    const tableNames = rows.map((row) => row.table_name);
+    const mergedData = data.layers.layer.map((layerObj) => {
+      const layerNameParts = layerObj.name.split(":");
+      const tableName =
+        tableNames.find((name) => name === layerNameParts[1]) || "N/A";
+      return {
+        layer: layerObj.name,
+        tableName: tableName,
+      };
+    });
+
+    res.status(200).json(mergedData);
   } catch (e) {
     console.log(e);
     res.status(505).json({ message: "Internal server error" });
+  }
+});
+
+const addLayer = asyncHandler(async (req, res) => {
+  try {
+    const layersData = req.body.layers;
+
+    if (!layersData || !Array.isArray(layersData) || layersData.length === 0) {
+      return res.status(400).json({ message: "Invalid data" });
+    }
+
+    const layersToCreate = layersData.map((layerObj) => {
+      const layerNameParts = layerObj.layer.split(":");
+      return {
+        layer: layerObj.layer,
+        tableName: layerObj.tableName,
+        actualTableName: layerNameParts[1] || "N/A",
+      };
+    });
+
+    const createdLayers = await Layer.insertMany(layersToCreate);
+    res.status(201).json({ layers: createdLayers, message: "success" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -37,32 +79,60 @@ const userLayer = asyncHandler(async (req, res) => {
       res.status(404).json({ message: "Group not found" });
       return;
     }
-    const layerNames = group.layers;
+    const layers = group.layers;
 
-    res.status(200).json({ data: layerNames });
+    const detailLayers = await Promise.all(
+      layers.map(async (layer) => {
+        const layerDocument = await Layer.findById(layer);
+        return layerDocument;
+      })
+    );
+    res.status(200).json({ data: detailLayers });
   } catch {
     res.status(500).json({ message: "Internal server error" });
   }
 });
 const commonLayer = asyncHandler(async (req, res) => {
   try {
-    const Layers = await CommonLayer.find();
-    res.status(200).json(Layers);
-  } catch {
+    const layers = await CommonLayer.find();
+
+    const detailLayers = await Promise.all(
+      layers.map(async (layer) => {
+        const layerDocument = await Layer.findById(layer.layer_id);
+        return {
+          _id: layer.id,
+          layer: layerDocument ? layerDocument.layer : null,
+          tableName: layerDocument ? layerDocument.tableName : null,
+          createdAt: layer.createdAt,
+          updatedAt: layer.updatedAt,
+        };
+      })
+    );
+
+    res.status(200).json(detailLayers);
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
 const addCommonLayer = asyncHandler(async (req, res) => {
   try {
-    const { layers } = req.body;
-    console.log(layers);
-    if (!layers) {
-      res.status().json({ message: "All field are mandatory" });
+    const layerDataArray = req.body;
+
+    if (
+      !layerDataArray ||
+      !Array.isArray(layerDataArray) ||
+      layerDataArray.length === 0
+    ) {
+      return res.status(400).json({ message: "Invalid data" });
     }
-    const Layers = await CommonLayer.create({ name: layers });
-    res.status(200).json({ data: Layers, status: "success" });
-  } catch {
+
+    const createdLayers = await CommonLayer.create(layerDataArray);
+
+    res.status(200).json({ data: createdLayers, status: "success" });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -76,7 +146,7 @@ const listTable = asyncHandler(async (req, res) => {
     `;
     const { rows } = await pgConnection.query(query);
     const tableNames = rows.map((row) => row.table_name);
-    res.json(tableNames);
+    res.status(201).json(tableNames);
   } catch (error) {
     console.error(error);
     res.status(500).send("Server Error");
@@ -95,7 +165,9 @@ const showTableData = asyncHandler(async (req, res) => {
     }
 
     const offset = (page - 1) * itemsPerPage;
-    const query = `SELECT *, ST_AsGeoJSON(geom) AS geom FROM "${tablename}" ORDER BY id OFFSET ${offset} LIMIT ${itemsPerPage}`;
+    // const query = `SELECT *, ST_AsGeoJSON(geom) AS geom FROM "${tablename}" ORDER BY id OFFSET ${offset} LIMIT ${itemsPerPage}`;
+    const query = `SELECT *, ST_AsGeoJSON(geom) AS geom FROM "${tablename}" OFFSET ${offset} LIMIT ${itemsPerPage}`;
+
     const result = await pgConnection.query(query);
 
     const tableData = result.rows.map((row) => ({
@@ -212,6 +284,7 @@ const addRowToTable = asyncHandler(async (req, res) => {
 const createSpatialTable = asyncHandler(async (req, res) => {
   try {
     const { tableName, data } = req.body;
+    const user_id = req.user.id;
 
     if (!tableName || !data) {
       res.status(400).json({ message: "Missing required parameters" });
@@ -274,6 +347,19 @@ const createSpatialTable = asyncHandler(async (req, res) => {
       "",
       nativeBoundingBox
     );
+    const layersList = await Layer.create({
+      layer: `${process.env.GEOSERVER_WORKSPACE_NAME}:${layerName}`,
+      tableName: layerName,
+    });
+    const userRole = await UserRole.find({ user_id });
+    const layers = await Group.findById(userRole.group_id);
+    await Group.findByIdAndUpdate(layers.id, {
+      layers: [...layers, layersList.id],
+    });
+    const bod_layers = await Group.find({ name: "BOD" });
+    await Group.findByIdAndUpdate(bod_layers.id, {
+      layers: [...bod_layers, layersList.id],
+    });
 
     res.status(201).json({ message: "Spatial table created successfully" });
   } catch (error) {
@@ -282,8 +368,20 @@ const createSpatialTable = asyncHandler(async (req, res) => {
   }
 });
 
+const getLayerById = asyncHandler(async (req, res) => {
+  try {
+    const id = req.params.id;
+    const layers = Layer.findById(id);
+    if (!layers) res.status(404).json({ message: "Layers not found" });
+    res.status(200).json(layers);
+  } catch (e) {
+    console.log(e);
+    res.status(505).json({ mesage: "Internal server error" });
+  }
+});
+
 module.exports = {
-  getAllLayer,
+  getAllLayerUnsave,
   userLayer,
   commonLayer,
   addCommonLayer,
@@ -293,4 +391,6 @@ module.exports = {
   findDataById,
   addRowToTable,
   createSpatialTable,
+  addLayer,
+  getLayerById,
 };

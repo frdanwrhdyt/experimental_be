@@ -353,6 +353,7 @@ const createSpatialTable = asyncHandler(async (req, res) => {
       await pgConnection.query(insertDataQuery);
     }
 
+    // Langkah-langkah lain seperti penerbitan layer di GeoServer, manipulasi grup, dan respons HTTP
     const layerName = tableName;
     const nativeBoundingBox = {
       minx: -180,
@@ -381,9 +382,16 @@ const createSpatialTable = asyncHandler(async (req, res) => {
     });
     const userRole = await UserRole.find({ user_id });
     const layers = await Group.findById(userRole[0].group_id);
-    await Group.findByIdAndUpdate(layers._id, {
-      layers: [...layers.layers, layersList._id],
-    });
+    if (userRole[0].role !== "superuser") {
+      const superuser = await Group({ name: "superuser" });
+      await Group.findByIdAndUpdate(superuser[0]._id, {
+        layers: [...layers.layers, layersList._id],
+      });
+    } else {
+      await Group.findByIdAndUpdate(layers._id, {
+        layers: [...layers.layers, layersList._id],
+      });
+    }
     const bod_layers = await Group.find({ name: "BOD" });
     await Group.findByIdAndUpdate(bod_layers[0]._id, {
       layers: [...bod_layers[0].layers, layersList._id],

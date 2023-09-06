@@ -41,25 +41,26 @@ const showDesaData = asyncHandler(async (req, res) => {
 });
 const getAllLayerUnsave = asyncHandler(async (req, res) => {
   try {
-    const data = await grc.layers.getAll();
-    const query = `
-      SELECT table_name
-      FROM information_schema.columns
-      WHERE table_schema='public' AND data_type='USER-DEFINED' AND udt_name='geometry'
-    `;
-    const { rows } = await pgConnection.query(query);
-    const tableNames = rows.map((row) => row.table_name);
-    const mergedData = data.layers.layer.map((layerObj) => {
-      const layerNameParts = layerObj.name.split(":");
-      const tableName =
-        tableNames.find((name) => name === layerNameParts[1]) || "N/A";
-      return {
-        layer: layerObj.name,
-        tableName: tableName,
-      };
-    });
+    const data = await Layer.find();
+    // const data = await grc.layers.getAll();
+    // const query = `
+    //   SELECT table_name
+    //   FROM information_schema.columns
+    //   WHERE table_schema='public' AND data_type='USER-DEFINED' AND udt_name='geometry'
+    // `;
+    // const { rows } = await pgConnection.query(query);
+    // const tableNames = rows.map((row) => row.table_name);
+    // const mergedData = data.layers.layer.map((layerObj) => {
+    //   const layerNameParts = layerObj.name.split(":");
+    //   const tableName =
+    //     tableNames.find((name) => name === layerNameParts[1]) || "N/A";
+    //   return {
+    //     layer: layerObj.name,
+    //     tableName: tableName,
+    //   };
+    // });
 
-    res.status(200).json(mergedData);
+    res.status(200).json(data);
   } catch (e) {
     console.log(e);
     res.status(505).json({ message: "Internal server error" });

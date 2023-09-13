@@ -7,6 +7,7 @@ const {
   checkEditPermission,
 } = require("../middleware/permission.middleware.js");
 
+// Endpoints untuk menampilkan data layer
 router.get(
   "/layer-desa-berpotensi",
   validatedToken,
@@ -18,6 +19,10 @@ router.get(
   checkSuperuser,
   LayerController.getAllLayerUnsave
 );
+router.get("/common-layers", LayerController.commonLayer);
+router.get("/mylayers", validatedToken, LayerController.userLayer);
+
+// Endpoints untuk mengelola layer
 router.post(
   "/layers",
   validatedToken,
@@ -30,21 +35,26 @@ router.post(
   checkSuperuser,
   LayerController.addCommonLayer
 );
-router.get("/common-layers", LayerController.commonLayer);
-router.get("/mylayers", validatedToken, LayerController.userLayer);
+router.delete(
+  "/show-layers/:id",
+  validatedToken,
+  checkEditPermission,
+  LayerController.deleteLayer
+);
+router.put(
+  "/layer/:id",
+  validatedToken,
+  checkSuperuser,
+  LayerController.getLayerById
+);
 
+// Endpoints untuk mengelola data spasial dalam tabel
 router.get("/table", validatedToken, LayerController.listTable);
 router.get("/table/:tablename", validatedToken, LayerController.showTableData);
 router.get(
   "/table/:tablename/find",
   validatedToken,
   LayerController.findDataById
-);
-router.get(
-  "/layer/:id",
-  validatedToken,
-  checkSuperuser,
-  LayerController.getLayerById
 );
 router.put(
   "/table/:tablename/edit",

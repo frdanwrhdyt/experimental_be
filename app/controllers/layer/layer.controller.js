@@ -1,33 +1,33 @@
+// Import modul yang diperlukan
 const asyncHandler = require("express-async-handler");
 const { UserRole, Group } = require("../../models/user.model");
 const { CommonLayer, Layer } = require("../../models/layer.model");
 const { pgConnection } = require("../../configs/database.config");
-
 const grcImport = require("geoserver-node-client");
 const GeoServerRestClient = grcImport.GeoServerRestClient;
+
+// Inisialisasi klien GeoServer
 const grc = new GeoServerRestClient(
   process.env.GEOSERVER_URL,
   process.env.GEOSERVER_USERNAME,
   process.env.GEOSERVER_PASSWORD
 );
+
+// Fungsi untuk menampilkan data layer desa_berpotensi
 const showDesaData = asyncHandler(async (req, res) => {
   try {
     const tablename = "desa_berpotensi";
-    const { page } = req.query; // Mendapatkan parameter halaman dari query string
-    const itemsPerPage = 20; // Jumlah item per halaman
-
+    const { page } = req.query;
+    const itemsPerPage = 20;
     const offset = (page - 1) * itemsPerPage;
-    // const query = `SELECT *, ST_AsGeoJSON(geom) AS geom FROM "${tablename}" ORDER BY id OFFSET ${offset} LIMIT ${itemsPerPage}`;
     const query = `SELECT *, ST_AsGeoJSON(geom) AS geom FROM "${tablename}" OFFSET ${offset} LIMIT ${itemsPerPage}`;
-
     const result = await pgConnection.query(query);
 
     const tableData = result.rows.map((row) => ({
       ...row,
-      geom: JSON.parse(row.geom), // Konversi GeoJSON teks ke objek JSON
+      geom: JSON.parse(row.geom),
     }));
 
-    // Menghitung total halaman berdasarkan total data dan itemsPerPage
     const queryTotal = `SELECT COUNT(*) FROM "${tablename}"`;
     const resultTotal = await pgConnection.query(queryTotal);
     const totalItems = resultTotal.rows[0].count;
@@ -39,27 +39,11 @@ const showDesaData = asyncHandler(async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
+
+// Fungsi untuk mendapatkan daftar semua layer tanpa keamanan
 const getAllLayerUnsave = asyncHandler(async (req, res) => {
   try {
     const data = await Layer.find();
-    // const data = await grc.layers.getAll();
-    // const query = `
-    //   SELECT table_name
-    //   FROM information_schema.columns
-    //   WHERE table_schema='public' AND data_type='USER-DEFINED' AND udt_name='geometry'
-    // `;
-    // const { rows } = await pgConnection.query(query);
-    // const tableNames = rows.map((row) => row.table_name);
-    // const mergedData = data.layers.layer.map((layerObj) => {
-    //   const layerNameParts = layerObj.name.split(":");
-    //   const tableName =
-    //     tableNames.find((name) => name === layerNameParts[1]) || "N/A";
-    //   return {
-    //     layer: layerObj.name,
-    //     tableName: tableName,
-    //   };
-    // });
-
     res.status(200).json(data);
   } catch (e) {
     console.log(e);
@@ -67,6 +51,26 @@ const getAllLayerUnsave = asyncHandler(async (req, res) => {
   }
 });
 
+// Fungsi untuk menghapus layer berdasarkan ID
+const deleteLayer = asyncHandler(async (req, res) => {
+  try {
+    const id = req.params.id;
+    const layer = await Layer.findById(id);
+
+    if (!layer) {
+      return res.status(404).json({ message: "Layer not found" });
+    }
+
+    const result = await Layer.findByIdAndDelete(id);
+
+    res.status(200).json({ message: "Layer deleted", deletedLayer: result });
+  } catch (e) {
+    console.log(e);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Fungsi untuk menambahkan layer baru
 const addLayer = asyncHandler(async (req, res) => {
   try {
     const layersData = req.body.layers;
@@ -92,22 +96,28 @@ const addLayer = asyncHandler(async (req, res) => {
   }
 });
 
+// Fungsi untuk mendapatkan layer berdasarkan peran pengguna
 const userLayer = asyncHandler(async (req, res) => {
   try {
     const user_id = req.user.id;
     const userRole = await UserRole.find({ user_id });
+
     if (!userRole) {
       res.status(404).json({ message: "Layer not found" });
       return;
     }
+
     const group_id = userRole.map((g) => {
       return g.group_id;
     });
+
     const group = await Group.findById(group_id);
+
     if (!group) {
       res.status(404).json({ message: "Group not found" });
       return;
     }
+
     const layers = group.layers;
 
     const detailLayers = await Promise.all(
@@ -116,11 +126,14 @@ const userLayer = asyncHandler(async (req, res) => {
         return layerDocument;
       })
     );
+
     res.status(200).json({ data: detailLayers });
   } catch {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// Fungsi untuk mendapatkan daftar common layer
 const commonLayer = asyncHandler(async (req, res) => {
   try {
     const layers = await CommonLayer.find();
@@ -145,6 +158,7 @@ const commonLayer = asyncHandler(async (req, res) => {
   }
 });
 
+// Fungsi untuk menambahkan common layer
 const addCommonLayer = asyncHandler(async (req, res) => {
   try {
     const layerDataArray = req.body;
@@ -166,6 +180,7 @@ const addCommonLayer = asyncHandler(async (req, res) => {
   }
 });
 
+// Fungsi untuk mendapatkan daftar nama tabel
 const listTable = asyncHandler(async (req, res) => {
   try {
     const query = `
@@ -173,6 +188,7 @@ const listTable = asyncHandler(async (req, res) => {
       FROM information_schema.columns
       WHERE table_schema='public' AND data_type='USER-DEFINED' AND udt_name='geometry'
     `;
+
     const { rows } = await pgConnection.query(query);
     const tableNames = rows.map((row) => row.table_name);
     res.status(201).json(tableNames);
@@ -182,11 +198,12 @@ const listTable = asyncHandler(async (req, res) => {
   }
 });
 
+// Fungsi untuk menampilkan data tabel berdasarkan nama tabel
 const showTableData = asyncHandler(async (req, res) => {
   try {
     const { tablename } = req.params;
-    const { page } = req.query; // Mendapatkan parameter halaman dari query string
-    const itemsPerPage = 20; // Jumlah item per halaman
+    const { page } = req.query;
+    const itemsPerPage = 20;
 
     if (!tablename) {
       res.status(400).json({ message: "Missing 'tablename' parameter" });
@@ -194,34 +211,32 @@ const showTableData = asyncHandler(async (req, res) => {
     }
 
     const offset = (page - 1) * itemsPerPage;
-    // const query = `SELECT *, ST_AsGeoJSON(geom) AS geom FROM "${tablename}" ORDER BY id OFFSET ${offset} LIMIT ${itemsPerPage}`;
     const query = `SELECT *, ST_AsGeoJSON(geom) AS geom FROM "${tablename}" OFFSET ${offset} LIMIT ${itemsPerPage}`;
-
     const result = await pgConnection.query(query);
 
     const tableData = result.rows.map((row) => ({
       ...row,
-      geom: JSON.parse(row.geom), // Konversi GeoJSON teks ke objek JSON
+      geom: JSON.parse(row.geom),
     }));
 
-    // Menghitung total halaman berdasarkan total data dan itemsPerPage
     const queryTotal = `SELECT COUNT(*) FROM "${tablename}"`;
     const resultTotal = await pgConnection.query(queryTotal);
     const totalItems = resultTotal.rows[0].count;
     const totalPages = Math.ceil(totalItems / itemsPerPage);
 
-    res.status(200).json({ data: tableData, totalPages, totalItems }); // Menambahkan totalItems ke dalam respons
+    res.status(200).json({ data: tableData, totalPages, totalItems });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server Error" });
   }
 });
 
+// Fungsi untuk mengedit data dalam tabel
 const editData = asyncHandler(async (req, res) => {
   try {
     const { tablename } = req.params;
-    const { id } = req.query; // Mendapatkan parameter ID dari query string
-    const updateData = req.body; // Mendapatkan data yang ingin diubah
+    const { id } = req.query;
+    const updateData = req.body;
 
     if (!tablename || !id || !updateData) {
       res.status(400).json({ message: "Missing required parameters" });
@@ -248,10 +263,11 @@ const editData = asyncHandler(async (req, res) => {
   }
 });
 
+// Fungsi untuk menemukan data dalam tabel berdasarkan ID
 const findDataById = asyncHandler(async (req, res) => {
   try {
     const { tablename } = req.params;
-    const { id } = req.query; // Mendapatkan parameter ID dari query string
+    const { id } = req.query;
 
     if (!tablename || !id) {
       res.status(400).json({ message: "Missing required parameters" });
@@ -284,6 +300,8 @@ const findDataById = asyncHandler(async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 });
+
+// Fungsi untuk menambahkan baris ke dalam tabel
 const addRowToTable = asyncHandler(async (req, res) => {
   try {
     const { tablename } = req.params;
@@ -310,6 +328,7 @@ const addRowToTable = asyncHandler(async (req, res) => {
   }
 });
 
+// Fungsi untuk membuat tabel spasial baru
 const createSpatialTable = asyncHandler(async (req, res) => {
   try {
     const { tableName, data } = req.body;
@@ -320,27 +339,23 @@ const createSpatialTable = asyncHandler(async (req, res) => {
       return;
     }
 
-    // Pastikan bahwa "data" memiliki struktur yang sesuai
     if (!data.type || !data.features || !Array.isArray(data.features)) {
       res.status(400).json({ message: "Invalid 'data' structure" });
       return;
     }
 
-    // Buat query untuk membuat tabel dengan kolom geometri dan properti sebagai kolom tambahan
     const createTableQuery = `
       CREATE TABLE "${tableName}" (
         id SERIAL PRIMARY KEY,
         geom geometry(Geometry, 4326),
         ${Object.keys(data.features[0].properties)
-          .map((prop) => `"${prop}" TEXT`) // Ubah 'string' menjadi 'TEXT'
+          .map((prop) => `"${prop}" TEXT`)
           .join(", ")}
       );
     `;
 
-    // Eksekusi query untuk membuat tabel
     await pgConnection.query(createTableQuery);
 
-    // Insert data ke dalam tabel
     for (const feature of data.features) {
       const { type, geometry, properties } = feature;
       const insertDataQuery = `
@@ -354,7 +369,6 @@ const createSpatialTable = asyncHandler(async (req, res) => {
       await pgConnection.query(insertDataQuery);
     }
 
-    // Langkah-langkah lain seperti penerbitan layer di GeoServer, manipulasi grup, dan respons HTTP
     const layerName = tableName;
     const nativeBoundingBox = {
       minx: -180,
@@ -366,6 +380,7 @@ const createSpatialTable = asyncHandler(async (req, res) => {
         $: "EPSG:4326",
       },
     };
+
     await grc.layers.publishFeatureType(
       process.env.GEOSERVER_WORKSPACE_NAME,
       process.env.GEOSERVER_WORKSPACE_NAME,
@@ -377,12 +392,15 @@ const createSpatialTable = asyncHandler(async (req, res) => {
       "",
       nativeBoundingBox
     );
+
     const layersList = await Layer.create({
       layer: `${process.env.GEOSERVER_WORKSPACE_NAME}:${layerName}`,
       tableName: layerName,
     });
+
     const userRole = await UserRole.find({ user_id });
     const layers = await Group.findById(userRole[0].group_id);
+
     if (userRole[0].role !== "superuser") {
       const superuser = await Group({ name: "superuser" });
       await Group.findByIdAndUpdate(superuser[0]._id, {
@@ -393,22 +411,26 @@ const createSpatialTable = asyncHandler(async (req, res) => {
         layers: [...layers.layers, layersList._id],
       });
     }
+
     const bod_layers = await Group.find({ name: "BOD" });
     await Group.findByIdAndUpdate(bod_layers[0]._id, {
       layers: [...bod_layers[0].layers, layersList._id],
     });
-    res.status(201).json({ message: "Sucess" });
+
+    res.status(201).json({ message: "Success" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server Error" });
   }
 });
 
+// Fungsi untuk mendapatkan layer berdasarkan ID
 const getLayerById = asyncHandler(async (req, res) => {
   try {
     const id = req.params.id;
     const layers = Layer.findById(id);
-    if (!layers) res.status(404).json({ message: "Layers not found" });
+
+    if (!layers) res.status(404).json({ message: "Layer not found" });
     res.status(200).json(layers);
   } catch (e) {
     console.log(e);
@@ -416,7 +438,9 @@ const getLayerById = asyncHandler(async (req, res) => {
   }
 });
 
+// Ekspor semua fungsi sebagai modul
 module.exports = {
+  deleteLayer,
   getAllLayerUnsave,
   userLayer,
   commonLayer,

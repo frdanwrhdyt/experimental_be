@@ -15,8 +15,7 @@ const commonLayerSchema = new mongoose.Schema(
 );
 layerSchema.pre("remove", async function (next) {
   try {
-    // Hapus semua Group yang memiliki layer_id yang sesuai dengan Layer yang akan dihapus
-    await Group.deleteMany({ layers: this._id });
+    await Group.updateMany({}, { $pull: { layers: this._id } });
     next();
   } catch (error) {
     next(error);
